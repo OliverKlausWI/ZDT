@@ -1,0 +1,372 @@
+/* App.css */
+:root {
+  --bg: #0c0f14;
+  --panel: rgba(20, 24, 30, 0.75);
+  --panel2: rgba(18, 22, 28, 0.65);
+  --border: rgba(255, 255, 255, 0.08);
+  --text: rgba(255, 255, 255, 0.92);
+  --muted: rgba(255, 255, 255, 0.62);
+  --muted2: rgba(255, 255, 255, 0.45);
+  --ok: rgba(60, 200, 130, 0.9);
+  --warn: rgba(240, 170, 80, 0.9);
+  --danger: rgba(210, 70, 70, 0.9);
+  --user: rgba(30, 80, 60, 0.55);
+  --assistant: rgba(40, 55, 95, 0.5);
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: radial-gradient(1200px 600px at 50% 30%, rgba(60, 80, 110, 0.16), transparent),
+    linear-gradient(180deg, #07090d, #0b0f15);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji",
+    "Segoe UI Emoji";
+}
+
+.appRoot {
+  height: 100vh;
+  padding: 18px;
+  box-sizing: border-box;
+}
+
+.layout {
+  height: 100%;
+  display: flex;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* Sidebar minimal breiter, damit Interrupt NICHT abgeschnitten wird */
+.sidebar {
+  width: 460px;
+  min-width: 460px;
+  max-width: 460px;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+}
+
+.sidebarTop {
+  padding: 16px 16px 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent);
+}
+
+.sidebarTopRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.title {
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  font-size: 18px;
+}
+
+.linkButton {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 10px;
+}
+
+.linkButton:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+.controlsRow {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  user-select: none;
+}
+
+.btn {
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.btn:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.btnOk {
+  border-color: rgba(60, 200, 130, 0.35);
+  background: rgba(60, 200, 130, 0.14);
+}
+
+.danger {
+  border-color: rgba(210, 70, 70, 0.35);
+  background: rgba(210, 70, 70, 0.14);
+}
+
+.chatList {
+  flex: 1;
+  min-height: 0;
+  padding: 14px;
+  overflow: auto;
+}
+
+.bubble {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: var(--panel2);
+}
+
+.bubble.user {
+  background: var(--user);
+}
+
+.bubble.assistant {
+  background: var(--assistant);
+}
+
+.bubbleRole {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.bubbleContent {
+  white-space: pre-wrap;
+  line-height: 1.35;
+}
+
+.composer {
+  padding: 12px 14px 14px 14px;
+  border-top: 1px solid var(--border);
+  background: linear-gradient(0deg, rgba(255, 255, 255, 0.05), transparent);
+}
+
+/* NOTE: existing app uses "statusLine" in JSX. Keep it as-is; do not change logic/layout. */
+.statusBar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.status.warn {
+  color: rgba(255, 200, 120, 0.95);
+}
+
+.status.subtle {
+  color: var(--muted2);
+}
+
+.composerRow {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text);
+  outline: none;
+}
+
+.input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.micBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+}
+
+.micDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.micOn .micDot {
+  background: rgba(60, 200, 130, 0.85);
+}
+
+.micRec .micDot {
+  background: rgba(220, 80, 80, 0.9);
+  box-shadow: 0 0 0 6px rgba(220, 80, 80, 0.12);
+}
+
+.hint {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--muted2);
+  line-height: 1.25;
+}
+
+/* Content Panel nutzt volle Restbreite */
+.contentPanel {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+  display: flex;
+  flex-direction: column;
+}
+
+.contentHeader {
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent);
+}
+
+.contentTitle {
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.pill {
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.pill.editing {
+  border-color: rgba(80, 160, 255, 0.35);
+  background: rgba(80, 160, 255, 0.12);
+}
+
+.pill.confirm {
+  border-color: rgba(240, 170, 80, 0.35);
+  background: rgba(240, 170, 80, 0.12);
+}
+
+.pill.sending {
+  border-color: rgba(240, 170, 80, 0.35);
+  background: rgba(240, 170, 80, 0.12);
+}
+
+.pill.sent {
+  border-color: rgba(60, 200, 130, 0.35);
+  background: rgba(60, 200, 130, 0.12);
+}
+
+/* ADDED: missing statuses */
+.pill.idle {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.pill.error {
+  border-color: rgba(210, 70, 70, 0.35);
+  background: rgba(210, 70, 70, 0.12);
+  color: rgba(255, 220, 220, 0.95);
+}
+
+.contentBody {
+  flex: 1;
+  min-height: 0;
+  padding: 16px;
+  overflow: auto;
+}
+
+.contentPlaceholder {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+/* Email Canvas */
+.emailCanvas {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  height: 100%;
+}
+
+.field {
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.field.grow {
+  flex: 1;
+  min-height: 220px;
+}
+
+.label {
+  font-size: 12px;
+  color: var(--muted2);
+  margin-bottom: 6px;
+}
+
+.value {
+  color: var(--text);
+  line-height: 1.35;
+  white-space: pre-wrap;
+}
+
+.value.pre {
+  white-space: pre-wrap;
+}
+
+.value.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+}
+
+/* ADDED: footer + error styling for new EmailCanvas layout */
+.mailFooterHint {
+  font-size: 12px;
+  color: var(--muted2);
+  line-height: 1.25;
+  padding: 2px 2px 0 2px;
+}
+
+.mailErrorBox {
+  border-color: rgba(210, 70, 70, 0.28);
+  background: rgba(210, 70, 70, 0.08);
+}

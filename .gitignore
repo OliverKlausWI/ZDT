@@ -1,0 +1,31 @@
+# dependencies
+node_modules/
+**/node_modules/
+
+# build outputs
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# environment and secrets
+.env
+.env.*
+**/.env
+**/.env.*
+
+# OS cruft
+.DS_Store
+._*
+
+# logs
+*.log
+
+# python cache/venvs
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# local data artifacts
+data/piper/*.onnx

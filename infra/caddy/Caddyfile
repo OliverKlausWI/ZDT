@@ -1,0 +1,21 @@
+{
+  # Optional: weniger Noise im Log, kannst du später hochdrehen
+  # debug
+}
+
+# Du kannst hier sowohl Hostname als auch IP angeben.
+# Empfehlung: zusätzlich später einen Hostnamen (assistant.lan / home.arpa) per DNS/Router.
+192.168.100.64, assistant.lan {
+  tls internal
+
+  # API direkt zum Backend (um Vite-Proxy zu umgehen)
+  @api path /api/*
+  handle @api {
+    reverse_proxy 127.0.0.1:8080
+  }
+
+  # Alles andere zur Vite-Dev-UI (inkl. HMR WebSocket)
+  handle {
+    reverse_proxy 127.0.0.1:5173
+  }
+}
