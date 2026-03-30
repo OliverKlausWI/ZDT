@@ -322,7 +322,15 @@ fastify.get("/zdt/api/health", async () => ({ ok: true }));
 fastify.post("/zdt/api/chat", async (req, reply) => {
   // Request Validation
   const Body = z.object({
-    conversationId: z.preprocess((v) => (v === null ? undefined : v), z.string().uuid().optional()),
+    conversationId: z.preprocess(
+      (v) => {
+        if (v === null || v === undefined) return undefined;
+        // Akzeptiere jeden String, nicht nur UUIDs
+        const s = String(v);
+        return s.length > 0 ? s : undefined;
+      },
+      z.string().optional()
+    ),
     message: z.string().min(1),
     inputMode: z.enum(["voice", "text"]).default("text"),
     model: z.string().optional(),
