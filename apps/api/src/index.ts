@@ -1,3 +1,25 @@
+/**
+ * ZDT API - Main Entry Point
+ * 
+ * Fastify-basierter Backend Server für die ZDT AI-Assistenten-Plattform.
+ * 
+ * Features:
+ * - Chat Endpoint (SSE Streaming)
+ * - Email-Drafting mit n8n Integration
+ * - Canvas Content Generierung (GLM-5)
+ * - Speech-to-Text Proxy (ASR)
+ * - Text-to-Speech (Piper)
+ * 
+ * Architecture:
+ * - In-Memory Conversation State
+ * - Intent-basiertes Routing
+ * - Server-Sent Events für Streaming
+ */
+
+// ============================================================================
+// IMPORTS
+// ============================================================================
+
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
@@ -10,53 +32,105 @@ import path from "node:path";
 import { promises as fs } from "node:fs";
 import { generateCanvasContent, isCanvasIntent } from "./canvas-api";
 
+// ============================================================================
+// SERVER SETUP
+// ============================================================================
+
 const fastify = Fastify({ logger: true });
 
+// CORS - Alle Origins erlaubt (für Entwicklung)
 await fastify.register(cors, { origin: true });
 
+// Multipart - Für Audio Uploads (ASR)
 await fastify.register(multipart, {
   limits: {
-    fileSize: 50 * 1024 * 1024,
+    fileSize: 50 * 1024 * 1024,  // 50MB max
     files: 1,
   },
 });
 
 const PORT = Number(process.env.PORT ?? 8080);
 
-// Ollama
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
+
+/** Ollama LLM Endpoint */
 const OLLAMA_URL = process.env.OLLAMA_URL ?? "http://127.0.0.1:11434";
+
+/** Default Modell für Chat */
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL ?? "qwen3.5:9b";
 
-// ASR (FastAPI)
+/** ASR Service (FastAPI Whisper) */
 const ASR_URL = process.env.ASR_URL ?? "http://127.0.0.1:9002/transcribe";
 const ASR_FIELD = process.env.ASR_FIELD ?? "file";
 
-// TTS (piper-tts)
+/** TTS (Piper) */
 const PIPER_BIN = process.env.PIPER_BIN ?? "/usr/bin/piper-tts";
 const PIPER_MODEL = process.env.PIPER_MODEL ?? "";
 const PIPER_CONFIG = process.env.PIPER_CONFIG ?? "";
 
-// n8n Mail
+/** n8n Email Webhook */
 const N8N_EMAIL_WEBHOOK_URL = process.env.N8N_EMAIL_WEBHOOK_URL ?? "";
 const N8N_EMAIL_KEY = process.env.N8N_EMAIL_KEY ?? "";
 
-// --- In-Memory Conversations ---
+// ============================================================================
+// TYPES
+// ============================================================================
+
 type Role = "user" | "assistant" | "system";
-type Msg = { role: Role; content: string; createdAt: number };
 
+/** Chat Message */
+type Msg = { 
+  role: Role; 
+  content: string; 
+  createdAt: number 
+};
+
+/** Email Draft Status */
 type MailStatus = "idle" | "editing" | "confirm_send" | "sent" | "error";
-type MailDraft = { to: string; subject: string; message: string; status: MailStatus; lastError?: string };
 
-type ConvState = { history: Msg[]; mail: MailDraft; lastCanvasQuery?: string; lastCanvasHtml?: string };
+/** Email Draft State */
+type MailDraft = { 
+  to: string; 
+  subject: string; 
+  message: string; 
+  status: MailStatus; 
+  lastError?: string 
+};
+
+/** Conversation State - In-Memory */
+type ConvState = { 
+  history: Msg[];              // Chat-Historie
+  mail: MailDraft;             // Email-Entwurf
+  lastCanvasQuery?: string;    // Letzter Canvas-Titel (für Follow-ups)
+  lastCanvasHtml?: string;     // Letztes Canvas-HTML (für Bearbeitungen)
+};
+
+// ============================================================================
+// STATE MANAGEMENT
+// ============================================================================
+
+/** In-Memory Conversation Storage */
 const conversations = new Map<string, ConvState>();
 
-function newId() {
+/**
+ * Generiert eine neue UUID für Conversations.
+ */
+function newId(): string {
   return crypto.randomUUID();
 }
 
+/**
+ * Holt oder erstellt Conversation State.
+ * 
+ * @param id - Conversation UUID
+ * @returns Existierender oder neuer State
+ */
 function getState(id: string): ConvState {
   const st = conversations.get(id);
   if (st) return st;
+  
   const fresh: ConvState = {
     history: [],
     mail: { to: "", subject: "", message: "", status: "idle" },
@@ -65,18 +139,53 @@ function getState(id: string): ConvState {
   return fresh;
 }
 
-function sse(reply: any, event: string, data: any) {
+// ============================================================================
+// SSE HELPERS
+// ============================================================================
+
+/**
+ * Sendet ein Server-Sent Event.
+ * 
+ * @param reply - Fastify Reply Object
+ * @param event - Event Name (token, mail, canvas, final, error)
+ * @param data - Event Payload
+ */
+function sse(reply: any, event: string, data: any): void {
   reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
-function streamSpeak(reply: any, conversationId: string, speak: string) {
-  // stream by words/spaces
+/**
+ * Streamt eine Antwort Wort für Wort und sendet final Event.
+ * 
+ * @param reply - Fastify Reply Object
+ * @param conversationId - Conversation UUID
+ * @param speak - Zu sprechender Text
+ */
+function streamSpeak(reply: any, conversationId: string, speak: string): void {
+  // Token-weises Streaming (by words/spaces)
   const parts = speak.split(/(\s+)/).filter((p) => p.length > 0);
   for (const p of parts) sse(reply, "token", { token: p });
+  
+  // Abschluss
   sse(reply, "final", { conversationId, text: speak });
   reply.raw.end();
 }
 
+// ============================================================================
+// INTENT DETECTION
+// ============================================================================
+
+/**
+ * Erkennt Email-Modus Start.
+ * 
+ * Trigger:
+ * - "lass uns eine email schreiben"
+ * - "email entwerfen"
+ * - "mail verfassen"
+ * 
+ * @param text - User-Nachricht
+ * @returns true wenn Email-Intent erkannt
+ */
 function isEmailIntentStart(text: string): boolean {
   const t = text.toLowerCase();
   return (
@@ -88,6 +197,12 @@ function isEmailIntentStart(text: string): boolean {
   );
 }
 
+/**
+ * Erkennt Sende-Intent.
+ * 
+ * @param text - User-Nachricht
+ * @returns true wenn Senden gewünscht
+ */
 function isSendIntent(text: string): boolean {
   const t = text.toLowerCase();
   return (
@@ -96,31 +211,54 @@ function isSendIntent(text: string): boolean {
   );
 }
 
+/**
+ * Erkennt "Ja" Antwort.
+ */
 function isYes(text: string): boolean {
   const t = text.toLowerCase().trim();
   return t === "ja" || t === "j" || t.startsWith("ja ");
 }
 
+/**
+ * Erkennt "Nein" Antwort.
+ */
 function isNo(text: string): boolean {
   const t = text.toLowerCase().trim();
   return t === "nein" || t === "n" || t.startsWith("nein ");
 }
 
-async function callOllamaOnceJson(model: string, messages: { role: Role; content: string }[]) {
+// ============================================================================
+// OLLAMA HELPERS
+// ============================================================================
+
+/**
+ * Ruft Ollama auf und extrahiert JSON aus der Response.
+ * 
+ * @param model - Modell Name
+ * @param messages - Chat Messages
+ * @returns Geparstes JSON Object
+ */
+async function callOllamaOnceJson(
+  model: string, 
+  messages: { role: Role; content: string }[]
+): Promise<any> {
   const payload = { model, stream: false, messages };
+  
   const res = await fetch(`${OLLAMA_URL}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  
   if (!res.ok) {
     const t = await res.text().catch(() => "");
     throw new Error(`Ollama failed: ${res.status} ${t.slice(0, 500)}`);
   }
+  
   const json = await res.json();
   const content = String(json?.message?.content ?? "");
 
-  // robust JSON extraction (model might add stray text)
+  // Robuste JSON-Extraktion (Modell könnte additional Text hinzufügen)
   const a = content.indexOf("{");
   const b = content.lastIndexOf("}");
   if (a < 0 || b <= a) throw new Error(`Invalid JSON from model: ${content.slice(0, 500)}`);
@@ -128,10 +266,21 @@ async function callOllamaOnceJson(model: string, messages: { role: Role; content
   return JSON.parse(content.slice(a, b + 1));
 }
 
-async function sendEmailViaN8n(d: MailDraft) {
+// ============================================================================
+// EMAIL SENDING
+// ============================================================================
+
+/**
+ * Sendet Email über n8n Webhook.
+ * 
+ * @param d - Email Draft
+ * @throws Error bei fehlender Konfiguration oder Sendefehler
+ */
+async function sendEmailViaN8n(d: MailDraft): Promise<void> {
   if (!N8N_EMAIL_WEBHOOK_URL || !N8N_EMAIL_KEY) {
     throw new Error("n8n not configured: N8N_EMAIL_WEBHOOK_URL / N8N_EMAIL_KEY missing");
   }
+  
   const res = await fetch(N8N_EMAIL_WEBHOOK_URL, {
     method: "POST",
     headers: {
@@ -140,16 +289,38 @@ async function sendEmailViaN8n(d: MailDraft) {
     },
     body: JSON.stringify({ to: d.to, subject: d.subject, message: d.message }),
   });
+  
   if (!res.ok) {
     const t = await res.text().catch(() => "");
     throw new Error(`n8n send failed: ${res.status} ${t.slice(0, 500)}`);
   }
 }
 
+// ============================================================================
+// ROUTES
+// ============================================================================
+
+/**
+ * Health Check Endpoint
+ */
 fastify.get("/api/health", async () => ({ ok: true }));
 
-// ---------- CHAT (SSE) ----------
+// ============================================================================
+// CHAT ENDPOINT (SSE)
+// ============================================================================
+
+/**
+ * Hauptendpoint für Chat, Email-Drafting und Canvas Content.
+ * 
+ * Nutzt Server-Sent Events (SSE) für Streaming.
+ * 
+ * Intent Routing:
+ * 1. Email Mode (wenn mail.status !== "idle" oder Email-Intent erkannt)
+ * 2. Canvas Mode (wenn isCanvasIntent true)
+ * 3. Normal Chat (Streaming über Ollama)
+ */
 fastify.post("/api/chat", async (req, reply) => {
+  // Request Validation
   const Body = z.object({
     conversationId: z.preprocess((v) => (v === null ? undefined : v), z.string().uuid().optional()),
     message: z.string().min(1),
@@ -161,6 +332,7 @@ fastify.post("/api/chat", async (req, reply) => {
   const conversationId = body.conversationId ?? newId();
   const st = getState(conversationId);
 
+  // SSE Headers
   reply
     .header("Content-Type", "text/event-stream; charset=utf-8")
     .header("Cache-Control", "no-cache, no-transform")
@@ -170,13 +342,14 @@ fastify.post("/api/chat", async (req, reply) => {
   const userText = body.message;
   const model = body.model ?? DEFAULT_MODEL;
 
-  // ---- Email mode entry ----
+  // ========================================
+  // EMAIL MODE ENTRY
+  // ========================================
   if (st.mail.status === "idle" && isEmailIntentStart(userText)) {
     st.mail = { to: "", subject: "", message: "", status: "editing" };
     sse(reply, "mail", st.mail);
 
-    const speak =
-      "Alles klar. Wir erstellen eine E-Mail. An wen soll sie gehen, welcher Betreff, und was ist die Kernaussage?";
+    const speak = "Alles klar. Wir erstellen eine E-Mail. An wen soll sie gehen, welcher Betreff, und was ist die Kernaussage?";
 
     st.history.push({ role: "user", content: userText, createdAt: Date.now() });
     st.history.push({ role: "assistant", content: speak, createdAt: Date.now() });
@@ -185,20 +358,21 @@ fastify.post("/api/chat", async (req, reply) => {
     return;
   }
 
-  // ---- Email mode handling ----
+  // ========================================
+  // EMAIL MODE HANDLING
+  // ========================================
   if (st.mail.status !== "idle") {
     st.history.push({ role: "user", content: userText, createdAt: Date.now() });
 
-    // confirmation flow
+    // --- Confirmation Flow ---
     if (st.mail.status === "confirm_send") {
       if (isYes(userText)) {
+        // Senden bestätigt
         try {
           await sendEmailViaN8n(st.mail);
-          st.mail.status = "idle";
-          st.mail.to = "";
-          st.mail.subject = "";
-          st.mail.message = "";
-          st.mail.lastError = undefined;
+          
+          // Reset nach erfolgreichem Versand
+          st.mail = { to: "", subject: "", message: "", status: "idle", lastError: undefined };
           sse(reply, "mail", st.mail);
 
           const speak = "E-Mail erfolgreich gesendet. Was möchtest du als nächstes tun?";
@@ -218,6 +392,7 @@ fastify.post("/api/chat", async (req, reply) => {
       }
 
       if (isNo(userText)) {
+        // Abbrechen, zurück zum Editieren
         st.mail.status = "editing";
         sse(reply, "mail", st.mail);
 
@@ -227,13 +402,14 @@ fastify.post("/api/chat", async (req, reply) => {
         return;
       }
 
+      // Unklare Antwort
       const speak = "Bitte bestätige: Soll ich die E-Mail wirklich senden? Antworte mit Ja oder Nein.";
       st.history.push({ role: "assistant", content: speak, createdAt: Date.now() });
       streamSpeak(reply, conversationId, speak);
       return;
     }
 
-    // single JSON call (speak + mail state)
+    // --- Email Draft Update via LLM ---
     const system = [
       "You are an email drafting controller embedded in a voice/chat assistant UI.",
       "You must maintain ONE email draft: {to, subject, message}.",
@@ -267,7 +443,7 @@ fastify.post("/api/chat", async (req, reply) => {
       st.mail.status = nextStatus === "confirm_send" ? "confirm_send" : "editing";
       st.mail.lastError = undefined;
 
-      // explicit send intent forces confirm_send
+      // Expliziter Sende-Intent
       if (isSendIntent(userText)) st.mail.status = "confirm_send";
 
       sse(reply, "mail", st.mail);
@@ -280,15 +456,16 @@ fastify.post("/api/chat", async (req, reply) => {
       st.mail.lastError = e?.message ?? String(e);
       sse(reply, "mail", st.mail);
 
-      const speak =
-        "Ich konnte den Entwurf gerade nicht aktualisieren. Sag mir bitte kurz: Empfänger, Betreff oder was genau soll in die Nachricht?";
+      const speak = "Ich konnte den Entwurf gerade nicht aktualisieren. Sag mir bitte kurz: Empfänger, Betreff oder was genau soll in die Nachricht?";
       st.history.push({ role: "assistant", content: speak, createdAt: Date.now() });
       streamSpeak(reply, conversationId, speak);
       return;
     }
   }
 
-  // ---- Canvas Content (GLM-5) ----
+  // ========================================
+  // CANVAS CONTENT (GLM-5)
+  // ========================================
   if (isCanvasIntent(userText)) {
     st.history.push({ role: "user", content: userText, createdAt: Date.now() });
     
@@ -296,7 +473,7 @@ fastify.post("/api/chat", async (req, reply) => {
       const canvasResult = await generateCanvasContent(userText, st.lastCanvasQuery, st.lastCanvasHtml);
       
       if (canvasResult && canvasResult.html) {
-        // Speichere Query und HTML für Follow-ups
+        // Speichere für Follow-ups
         st.lastCanvasQuery = canvasResult.title.toLowerCase();
         st.lastCanvasHtml = canvasResult.html;
         
@@ -314,7 +491,9 @@ fastify.post("/api/chat", async (req, reply) => {
     // Fallback: Continue with normal chat
   }
 
-  // ---- Normal chat (Ollama streaming) ----
+  // ========================================
+  // NORMAL CHAT (OLLAMA STREAMING)
+  // ========================================
   st.history.push({ role: "user", content: userText, createdAt: Date.now() });
 
   const payload = {
@@ -348,6 +527,7 @@ fastify.post("/api/chat", async (req, reply) => {
 
       buffer += decoder.decode(value, { stream: true });
 
+      // Parse Zeile für Zeile
       while (true) {
         const idx = buffer.indexOf("\n");
         if (idx === -1) break;
@@ -380,7 +560,15 @@ fastify.post("/api/chat", async (req, reply) => {
   }
 });
 
-// ---------- ASR (Proxy) ----------
+// ============================================================================
+// ASR ENDPOINT (PROXY)
+// ============================================================================
+
+/**
+ * Speech-to-Text Proxy.
+ * 
+ * Leitet Audio-Uploads an externen ASR-Service (z.B. Whisper) weiter.
+ */
 fastify.post("/api/asr", async (req, reply) => {
   const file = await (req as any).file();
   if (!file) {
@@ -437,7 +625,15 @@ fastify.post("/api/asr", async (req, reply) => {
   }
 });
 
-// ---------- TTS (piper-tts) ----------
+// ============================================================================
+// TTS ENDPOINT (PIPER)
+// ============================================================================
+
+/**
+ * Text-to-Speech mit Piper.
+ * 
+ * Generiert WAV Audio aus Text.
+ */
 fastify.post("/api/tts", async (req, reply) => {
   const Body = z.object({ text: z.string().min(1) });
   const { text } = Body.parse(req.body);
@@ -450,6 +646,7 @@ fastify.post("/api/tts", async (req, reply) => {
     return;
   }
 
+  // Prüfe ob Model/Config existieren
   const [modelOk, configOk] = await Promise.all([
     fs.access(PIPER_MODEL).then(() => true).catch(() => false),
     fs.access(PIPER_CONFIG).then(() => true).catch(() => false),
@@ -464,12 +661,14 @@ fastify.post("/api/tts", async (req, reply) => {
     return;
   }
 
+  // Temp Output File
   const id = crypto.randomUUID();
   const outPath = path.join(tmpdir(), `tts_${id}.wav`);
   const args = ["-m", PIPER_MODEL, "-c", PIPER_CONFIG, "-f", outPath];
 
   req.log.info({ PIPER_BIN, args }, "TTS piper-tts spawn");
 
+  // Piper Process
   const p = spawn(PIPER_BIN, args, { stdio: ["pipe", "ignore", "pipe"] });
 
   let err = "";
@@ -496,6 +695,10 @@ fastify.post("/api/tts", async (req, reply) => {
   reply.header("Content-Type", "audio/wav");
   reply.send(wav);
 });
+
+// ============================================================================
+// SERVER START
+// ============================================================================
 
 fastify.listen({ port: PORT, host: "0.0.0.0" }).catch((err) => {
   fastify.log.error(err);

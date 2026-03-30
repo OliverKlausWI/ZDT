@@ -1,26 +1,70 @@
-// Canvas API - HTML-Generierung via GLM-5 + Bildersuche
+/**
+ * Canvas API - HTML Content Generierung
+ * 
+ * Dieses Modul stellt Funktionen bereit, um dynamische HTML-Inhalte
+ * für das rechte Content Panel zu generieren. Es nutzt:
+ * 
+ * 1. LoremFlickr - Für Bildersuche (kostenlos, kein API-Key)
+ * 2. GLM-5 API - Für Diagramme, Tabellen, Karten, Bearbeitungen
+ * 
+ * Features:
+ * - Intent Detection: Erkennt ob User einen Canvas-Content möchte
+ * - Image Search: Extrahiert Suchbegriffe und holt Bilder
+ * - HTML Generation: GLM-5 generiert strukturiertes HTML
+ * - Edit Mode: Bearbeitet existierenden Content (Follow-ups)
+ */
 
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
+
+/** GLM-5 API Endpoint (Zhipu AI) */
 const GLM5_API_URL = "https://api.z.ai/api/paas/v4/chat/completions";
+
+/** GLM-5 API Key - Sollte eigentlich über Environment Variable konfiguriert werden */
 const GLM5_API_KEY = process.env.GLM5_API_KEY || "55a2592beb09418fa24308b917959898.LdOSXEnztL6lLyNm";
 
-// LoremFlickr für kostenlose Bilder (kein API-Key nötig)
+/** LoremFlickr URL Template für Bildersuche */
 const LOREMFLICKR_URL = "https://loremflickr.com/800/600";
 
+/** Logger Utility */
 const log = {
   error: (msg: any, data?: any) => console.error("[Canvas API Error]", msg, data || ""),
   info: (msg: any) => console.log("[Canvas API]", msg)
 };
 
+// ============================================================================
+// TYPES
+// ============================================================================
+
+/** Ergebnis der Canvas Generierung */
 export interface CanvasResult {
+  /** Titel für den Content Header */
   title: string;
+  /** HTML Content (wird in iframe gerendert) */
   html: string;
 }
 
-// Erkenne ob User ein Bild sehen will
+// ============================================================================
+// IMAGE DETECTION & SEARCH
+// ============================================================================
+
+/**
+ * Erkennt ob der User ein Bild sehen möchte.
+ * 
+ * Matching Patterns:
+ * - "zeige mir [bild/katze/hund/...]"
+ * - "foto von X"
+ * - Follow-ups: "einen anderen", "noch eins"
+ * - Kurze Sätze mit Bild-Keywords
+ * 
+ * @param text - User-Nachricht
+ * @returns true wenn Bild-Request erkannt
+ */
 function isImageRequest(text: string): boolean {
   const t = text.toLowerCase();
   
-  // Direkte Bild-Anfragen
+  // Direkte Bild-Anfragen mit "zeige"
   if (
     (t.includes("zeige") || t.includes("zeig")) &&
     (t.includes("bild") || t.includes("foto") || t.includes("katze") || 
@@ -34,18 +78,17 @@ function isImageRequest(text: string): boolean {
     return true;
   }
   
-  // Follow-up Requests ("einen anderen", "noch eins", etc.)
+  // Follow-up Requests
   if (t.includes("anderen") || t.includes("anderes") || t.includes("noch ein") ||
       t.includes("noch eins") || t.includes("nochmal")) {
     return true;
   }
   
-  // Kurze Bild-Keywords ohne "zeige"
+  // Kurze Sätze mit Bild-Keywords (ohne "zeige")
   const imageKeywords = ["katze", "hund", "pferd", "landschaft", "stadt", 
                          "natur", "auto", "haus", "berg", "strand", "meer",
                          "wald", "blume", "himmel", "sonne", "mond"];
   
-  // Wenn es ein kurzer Satz ist mit einem dieser Keywords
   const words = t.split(/\s+/);
   if (words.length <= 4) {
     for (const kw of imageKeywords) {
@@ -56,18 +99,30 @@ function isImageRequest(text: string): boolean {
   return t.includes("foto von") || t.includes("bild von");
 }
 
-// Extrahiere Suchbegriff aus User-Request
+/**
+ * Extrahiert den Suchbegriff aus der User-Nachricht.
+ * 
+ * Beispiele:
+ * - "zeige mir eine Katze" → "katze"
+ * - "ein Bild von Tokyo bei Nacht" → "tokyo bei nacht"
+ * - "einen anderen Hund" → "hund" (mit lastCanvasQuery fallback)
+ * 
+ * @param text - User-Nachricht
+ * @param lastCanvasQuery - Letzter Query für Follow-ups
+ * @returns Suchbegriff für LoremFlickr
+ */
 function extractImageQuery(text: string, lastCanvasQuery?: string): string {
   const t = text.toLowerCase();
   
   // Follow-up: "einen anderen X"
   if (t.includes("anderen") || t.includes("anderes") || t.includes("noch ein") ||
       t.includes("noch eins") || t.includes("nochmal")) {
-    // Versuche das Substantiv zu finden
+    
     const keywords = ["katze", "hund", "pferd", "landschaft", "stadt", 
                       "natur", "auto", "haus", "berg", "strand", "meer",
                       "wald", "blume", "himmel", "sonne", "mond"];
     
+    // Suche nach neuem Keyword in der Nachricht
     for (const kw of keywords) {
       if (t.includes(kw)) return kw;
     }
@@ -76,7 +131,7 @@ function extractImageQuery(text: string, lastCanvasQuery?: string): string {
     if (lastCanvasQuery) return lastCanvasQuery;
   }
   
-  // Häufige Muster
+  // Regex Patterns für verschiedene Formulierungen
   const patterns = [
     /zeige mir (?:ein |eine )?(?:bild|foto) (?:von )?(.+)/i,
     /zeig mir (?:ein |eine )?(?:bild|foto) (?:von )?(.+)/i,
@@ -90,13 +145,14 @@ function extractImageQuery(text: string, lastCanvasQuery?: string): string {
   for (const pattern of patterns) {
     const match = t.match(pattern);
     if (match) {
+      // Bereinige den Query (entferne Füllwörter)
       let query = match[1].trim();
       query = query.replace(/\b(ein|eine|der|die|das|einer|einem|einen|anderen|anderes)\b/gi, "").trim();
       return query || "nature";
     }
   }
   
-  // Keywords direkt suchen
+  // Direkte Keyword-Suche
   const keywords = ["katze", "hund", "pferd", "landschaft", "stadt", 
                     "natur", "auto", "haus", "berg", "strand", "meer",
                     "wald", "blume", "himmel", "sonne", "mond"];
@@ -105,13 +161,20 @@ function extractImageQuery(text: string, lastCanvasQuery?: string): string {
     if (t.includes(kw)) return kw;
   }
   
-  return "nature";
+  return "nature"; // Default Fallback
 }
 
-// Hole Bild von LoremFlickr
+/**
+ * Holt ein Bild von LoremFlickr.
+ * 
+ * LoremFlickr ist ein kostenloser Service, der zufällige Bilder
+ * basierend auf Suchbegriffen liefert. Kein API-Key erforderlich.
+ * 
+ * @param query - Suchbegriff
+ * @returns Bild-URL und Alt-Text
+ */
 async function fetchImage(query: string): Promise<{ url: string; alt: string } | null> {
   try {
-    // LoremFlickr URL mit Query-Parameter
     const imageUrl = `${LOREMFLICKR_URL}/${encodeURIComponent(query)}`;
     log.info(`Fetching image from: ${imageUrl}`);
     
@@ -125,7 +188,20 @@ async function fetchImage(query: string): Promise<{ url: string; alt: string } |
   }
 }
 
-// Generiere HTML für Bildanzeige
+/**
+ * Generiert HTML für die Bildanzeige.
+ * 
+ * Erstellt ein responsives, gestyltes HTML mit:
+ * - Gradient Hintergrund
+ * - Titel
+ * - Bild mit Schatten
+ * - Credit Text
+ * 
+ * @param imageUrl - Bild-URL
+ * @param alt - Alt-Text
+ * @param query - Suchbegriff (für Titel)
+ * @returns HTML String
+ */
 function generateImageHtml(imageUrl: string, alt: string, query: string): string {
   return `
 <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:20px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);">
@@ -135,7 +211,14 @@ function generateImageHtml(imageUrl: string, alt: string, query: string): string
 </div>`;
 }
 
-// Presets für verschiedene Content-Typen
+// ============================================================================
+// CONTENT TYPE DETECTION
+// ============================================================================
+
+/**
+ * Presets für verschiedene Content-Typen.
+ * Jedes Preset definiert einen System-Prompt für GLM-5.
+ */
 const CANVAS_PRESETS: Record<string, { systemPrompt: string; title: string }> = {
   image: {
     title: "Bild",
@@ -168,7 +251,12 @@ Antworte NUR als JSON: {"title": "Titel", "html": "..."}`
   }
 };
 
-// Erkenne Content-Typ aus User-Request
+/**
+ * Erkennt den Content-Typ aus der User-Nachricht.
+ * 
+ * @param userRequest - User-Nachricht
+ * @returns Content-Type Key oder null
+ */
 function detectContentType(userRequest: string): string | null {
   const t = userRequest.toLowerCase();
   
@@ -187,7 +275,22 @@ function detectContentType(userRequest: string): string | null {
   return null;
 }
 
-// Prüfe ob Request für Canvas gedacht ist
+// ============================================================================
+// CANVAS INTENT DETECTION
+// ============================================================================
+
+/**
+ * Prüft ob der User-Request für das Canvas-Panel gedacht ist.
+ * 
+ * Matching Kriterien:
+ * 1. Bild-Anfragen (isImageRequest)
+ * 2. Explizite Keywords ("zeige mir", "erstelle im canvas")
+ * 3. Content-Type Detection
+ * 4. Bearbeitungs-Keywords ("hinzufügen", "ändere", "D=7")
+ * 
+ * @param text - User-Nachricht
+ * @returns true wenn Canvas Intent erkannt
+ */
 export function isCanvasIntent(text: string): boolean {
   const t = text.toLowerCase();
   
@@ -206,7 +309,7 @@ export function isCanvasIntent(text: string): boolean {
     return true;
   }
   
-  // Follow-up Bearbeitungen (sehr wichtig!)
+  // Follow-up Bearbeitungen
   if (t.includes("hinzufügen") || t.includes("hinzufuegen") || t.includes("füge") ||
       t.includes("entferne") || t.includes("lösche") || t.includes("ändere") ||
       t.includes("bearbeite") || t.includes("aktualisiere") || t.includes("update") ||
@@ -219,11 +322,34 @@ export function isCanvasIntent(text: string): boolean {
   return false;
 }
 
-// Generiere HTML via GLM-5 oder Unsplash
-export async function generateCanvasContent(userRequest: string, lastCanvasQuery?: string, lastCanvasHtml?: string): Promise<CanvasResult | null> {
+// ============================================================================
+// CANVAS CONTENT GENERATION
+// ============================================================================
+
+/**
+ * Generiert Canvas Content basierend auf User-Request.
+ * 
+ * Flow:
+ * 1. Prüfe auf Bearbeitungs-Modus (falls lastCanvasHtml existiert)
+ * 2. Falls Bild-Request: Hole Bild von LoremFlickr
+ * 3. Sonst: Generiere HTML via GLM-5
+ * 
+ * @param userRequest - User-Nachricht
+ * @param lastCanvasQuery - Letzter Canvas-Titel (für Follow-ups)
+ * @param lastCanvasHtml - Letztes Canvas-HTML (für Bearbeitungen)
+ * @returns CanvasResult mit title und html, oder null bei Fehler
+ */
+export async function generateCanvasContent(
+  userRequest: string, 
+  lastCanvasQuery?: string, 
+  lastCanvasHtml?: string
+): Promise<CanvasResult | null> {
+  
   log.info(`Canvas request: ${userRequest.slice(0, 50)}...`);
   
-  // Prüfe ob es eine Bearbeitung ist
+  // ========================================
+  // 1. Prüfe auf Bearbeitungs-Modus
+  // ========================================
   const isEdit = lastCanvasHtml && (
     userRequest.toLowerCase().includes("hinzufügen") ||
     userRequest.toLowerCase().includes("hinzufuegen") ||
@@ -236,7 +362,9 @@ export async function generateCanvasContent(userRequest: string, lastCanvasQuery
     /\w+=\d+/.test(userRequest)
   );
   
-  // 1. Prüfe auf Bild-Anfrage -> LoremFlickr
+  // ========================================
+  // 2. Bild-Anfrage (LoremFlickr)
+  // ========================================
   if (isImageRequest(userRequest) && !isEdit) {
     const query = extractImageQuery(userRequest, lastCanvasQuery);
     log.info(`Image request detected, searching for: ${query}`);
@@ -250,7 +378,9 @@ export async function generateCanvasContent(userRequest: string, lastCanvasQuery
     }
   }
   
-  // 2. GLM-5 für Diagramme/Bearbeitungen
+  // ========================================
+  // 3. GLM-5 für Diagramme/Bearbeitungen
+  // ========================================
   if (!GLM5_API_KEY) {
     log.error("GLM5_API_KEY not configured");
     return null;
@@ -259,11 +389,12 @@ export async function generateCanvasContent(userRequest: string, lastCanvasQuery
   const contentType = detectContentType(userRequest);
   const preset = contentType ? CANVAS_PRESETS[contentType] : null;
   
-  // System-Prompt basierend auf Edit oder Neu-Erstellung
+  // System-Prompt basierend auf Modus
   let systemPrompt: string;
   let userPrompt: string;
   
   if (isEdit && lastCanvasHtml) {
+    // Bearbeitungs-Modus: Existierendes HTML aktualisieren
     systemPrompt = `Du bist ein UI-Entwickler. Bearbeite das existierende HTML basierend auf dem User-Wunsch.
 Das HTML wird in einem iframe gerendert - keine Scripts, nur statischer Content.
 Behalte das bestehende Design bei, aber führe die gewünschten Änderungen durch.
@@ -271,6 +402,7 @@ Antworte NUR als JSON: {"title": "Titel", "html": "..."}`;
     
     userPrompt = `AKTUELLES HTML:\n${lastCanvasHtml}\n\nÄNDERUNGSWUNSCH: ${userRequest}\n\nGib das aktualisierte HTML zurück.`;
   } else {
+    // Neu-Erstellung
     systemPrompt = preset?.systemPrompt || `Du bist ein UI-Entwickler. Erstelle HTML mit Inline-CSS.
 Das HTML wird in einem iframe gerendert - keine Scripts, nur statischer Content.
 Antworte NUR als JSON: {"title": "Titel", "html": "..."}`;
@@ -281,6 +413,7 @@ Antworte NUR als JSON: {"title": "Titel", "html": "..."}`;
   try {
     log.info(`Generating canvas content for: ${userRequest.slice(0, 50)}...`);
     
+    // GLM-5 API Call
     const res = await fetch(GLM5_API_URL, {
       method: "POST",
       headers: { 
@@ -306,7 +439,7 @@ Antworte NUR als JSON: {"title": "Titel", "html": "..."}`;
     const json = await res.json();
     let content = json?.choices?.[0]?.message?.content || "";
     
-    // JSON extrahieren
+    // JSON aus Response extrahieren
     content = content.replace(/```json\n?/g, "").replace(/```\n?/g, "");
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     
@@ -327,7 +460,19 @@ Antworte NUR als JSON: {"title": "Titel", "html": "..."}`;
   }
 }
 
-// HTML sanitizen (Scripts entfernen)
+// ============================================================================
+// SECURITY
+// ============================================================================
+
+/**
+ * Entfernt gefährliche HTML-Elemente.
+ * 
+ * - Script-Tags
+ * - Event-Handler (onclick, onload, etc.)
+ * 
+ * @param html - Raw HTML
+ * @returns Sanitized HTML
+ */
 function sanitizeHtml(html: string): string {
   return html
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
