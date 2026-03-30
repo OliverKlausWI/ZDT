@@ -303,7 +303,7 @@ async function sendEmailViaN8n(d: MailDraft): Promise<void> {
 /**
  * Health Check Endpoint
  */
-fastify.get("/api/health", async () => ({ ok: true }));
+fastify.get("/zdt/api/health", async () => ({ ok: true }));
 
 // ============================================================================
 // CHAT ENDPOINT (SSE)
@@ -319,7 +319,7 @@ fastify.get("/api/health", async () => ({ ok: true }));
  * 2. Canvas Mode (wenn isCanvasIntent true)
  * 3. Normal Chat (Streaming über Ollama)
  */
-fastify.post("/api/chat", async (req, reply) => {
+fastify.post("/zdt/api/chat", async (req, reply) => {
   // Request Validation
   const Body = z.object({
     conversationId: z.preprocess((v) => (v === null ? undefined : v), z.string().uuid().optional()),
@@ -569,7 +569,7 @@ fastify.post("/api/chat", async (req, reply) => {
  * 
  * Leitet Audio-Uploads an externen ASR-Service (z.B. Whisper) weiter.
  */
-fastify.post("/api/asr", async (req, reply) => {
+fastify.post("/zdt/api/asr", async (req, reply) => {
   const file = await (req as any).file();
   if (!file) {
     reply.code(400).send({ error: "No file uploaded (expected field 'file')." });
@@ -634,7 +634,7 @@ fastify.post("/api/asr", async (req, reply) => {
  * 
  * Generiert WAV Audio aus Text.
  */
-fastify.post("/api/tts", async (req, reply) => {
+fastify.post("/zdt/api/tts", async (req, reply) => {
   const Body = z.object({ text: z.string().min(1) });
   const { text } = Body.parse(req.body);
 

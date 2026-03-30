@@ -9,10 +9,10 @@ Fastify-basierter Backend Server für die ZDT AI-Assistenten-Plattform.
 │                  Fastify Server                      │
 │                    Port 8080                         │
 ├─────────────────────────────────────────────────────┤
-│  /api/chat    │ Chat + Email + Canvas (SSE Stream)  │
-│  /api/asr     │ Speech-to-Text Proxy (Whisper)      │
-│  /api/tts     │ Text-to-Speech (Piper)              │
-│  /api/health  │ Health Check                        │
+│  /zdt/api/chat    │ Chat + Email + Canvas (SSE Stream)  │
+│  /zdt/api/asr     │ Speech-to-Text Proxy (Whisper)      │
+│  /zdt/api/tts     │ Text-to-Speech (Piper)              │
+│  /zdt/api/health  │ Health Check                        │
 ├─────────────────────────────────────────────────────┤
 │            In-Memory Conversation State              │
 │  - history: Message[]                               │
@@ -23,7 +23,7 @@ Fastify-basierter Backend Server für die ZDT AI-Assistenten-Plattform.
 
 ## Endpoints
 
-### POST /api/chat
+### POST /zdt/api/chat
 
 Main chat endpoint using Server-Sent Events (SSE).
 
@@ -44,7 +44,7 @@ Main chat endpoint using Server-Sent Events (SSE).
 - `final` - End of response `{ conversationId, text }`
 - `error` - Error `{ message, status }`
 
-### POST /api/asr
+### POST /zdt/api/asr
 
 Speech-to-text proxy for Whisper ASR service.
 
@@ -52,7 +52,7 @@ Speech-to-text proxy for Whisper ASR service.
 
 **Response:** `{ text: "transcribed text" }`
 
-### POST /api/tts
+### POST /zdt/api/tts
 
 Text-to-speech using Piper.
 
@@ -60,7 +60,7 @@ Text-to-speech using Piper.
 
 **Response:** `audio/wav` binary
 
-### GET /api/health
+### GET /zdt/api/health
 
 Health check endpoint.
 

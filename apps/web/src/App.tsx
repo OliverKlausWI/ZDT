@@ -141,7 +141,7 @@ export default function App() {
   });
 
   // same-origin reverse proxy
-  const backendBase = useMemo(() => "", []);
+  const backendBase = useMemo(() => "/zdt", []);
 
   function scrollToBottom() {
     const el = listRef.current;
