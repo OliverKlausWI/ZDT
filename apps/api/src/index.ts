@@ -504,10 +504,25 @@ fastify.post("/zdt/api/chat", async (req, reply) => {
   // ========================================
   st.history.push({ role: "user", content: userText, createdAt: Date.now() });
 
+  // System-Prompt für deutsche Antworten
+  const systemPrompt: Msg = {
+    role: "system",
+    content: `Du bist ein hilfreicher, freundlicher KI-Assistent.
+WICHTIG: Antworte IMMER auf Deutsch, auch bei kurzen Eingaben oder englischen Fragen.
+Sei prägnant und natürlich in deiner Sprache.`,
+    createdAt: Date.now()
+  };
+
+  // Füge System-Prompt am Anfang der Messages hinzu (falls noch nicht vorhanden)
+  const messagesWithSystem = [
+    systemPrompt,
+    ...st.history.map((m) => ({ role: m.role, content: m.content })),
+  ];
+
   const payload = {
     model,
     stream: true,
-    messages: st.history.map((m) => ({ role: m.role, content: m.content })),
+    messages: messagesWithSystem,
   };
 
   const res = await fetch(`${OLLAMA_URL}/api/chat`, {
