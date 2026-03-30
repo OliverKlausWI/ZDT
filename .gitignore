@@ -29,3 +29,4 @@ venv/
 
 # local data artifacts
 data/piper/*.onnx
+data/

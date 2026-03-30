@@ -27,15 +27,6 @@ services:
     volumes:
       - minio_data:/data
 
-  asr:
-    build: ./asr
-    ports:
-      - "9002:8000"
-    environment:
-      MODEL_SIZE: "base"
-      DEVICE: "cpu"
-      COMPUTE_TYPE: "int8"
-
   caddy:
     image: caddy:2-alpine
     network_mode: host
