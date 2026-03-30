@@ -8,6 +8,7 @@ import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promises as fs } from "node:fs";
+import { generateCanvasContent, isCanvasIntent } from "./canvas-api";
 
 const fastify = Fastify({ logger: true });
 
@@ -46,7 +47,7 @@ type Msg = { role: Role; content: string; createdAt: number };
 type MailStatus = "idle" | "editing" | "confirm_send" | "sent" | "error";
 type MailDraft = { to: string; subject: string; message: string; status: MailStatus; lastError?: string };
 
-type ConvState = { history: Msg[]; mail: MailDraft };
+type ConvState = { history: Msg[]; mail: MailDraft; lastCanvasQuery?: string; lastCanvasHtml?: string };
 const conversations = new Map<string, ConvState>();
 
 function newId() {
@@ -193,11 +194,14 @@ fastify.post("/api/chat", async (req, reply) => {
       if (isYes(userText)) {
         try {
           await sendEmailViaN8n(st.mail);
-          st.mail.status = "sent";
+          st.mail.status = "idle";
+          st.mail.to = "";
+          st.mail.subject = "";
+          st.mail.message = "";
           st.mail.lastError = undefined;
           sse(reply, "mail", st.mail);
 
-          const speak = "Gesendet. Möchtest du noch etwas an einer weiteren E-Mail machen?";
+          const speak = "E-Mail erfolgreich gesendet. Was möchtest du als nächstes tun?";
           st.history.push({ role: "assistant", content: speak, createdAt: Date.now() });
           streamSpeak(reply, conversationId, speak);
           return;
@@ -223,7 +227,7 @@ fastify.post("/api/chat", async (req, reply) => {
         return;
       }
 
-      const speak = "Bitte bestätige: Soll ich die E-Mail wirklich senden? Antworte mit „Ja“ oder „Nein“.";
+      const speak = "Bitte bestätige: Soll ich die E-Mail wirklich senden? Antworte mit Ja oder Nein.";
       st.history.push({ role: "assistant", content: speak, createdAt: Date.now() });
       streamSpeak(reply, conversationId, speak);
       return;
@@ -282,6 +286,32 @@ fastify.post("/api/chat", async (req, reply) => {
       streamSpeak(reply, conversationId, speak);
       return;
     }
+  }
+
+  // ---- Canvas Content (GLM-5) ----
+  if (isCanvasIntent(userText)) {
+    st.history.push({ role: "user", content: userText, createdAt: Date.now() });
+    
+    try {
+      const canvasResult = await generateCanvasContent(userText, st.lastCanvasQuery, st.lastCanvasHtml);
+      
+      if (canvasResult && canvasResult.html) {
+        // Speichere Query und HTML für Follow-ups
+        st.lastCanvasQuery = canvasResult.title.toLowerCase();
+        st.lastCanvasHtml = canvasResult.html;
+        
+        sse(reply, "canvas", canvasResult);
+        
+        const speak = "Ich habe den Inhalt im rechten Panel erstellt.";
+        st.history.push({ role: "assistant", content: speak, createdAt: Date.now() });
+        streamSpeak(reply, conversationId, speak);
+        return;
+      }
+    } catch (e: any) {
+      fastify.log.error(e, "Canvas generation failed");
+    }
+    
+    // Fallback: Continue with normal chat
   }
 
   // ---- Normal chat (Ollama streaming) ----
@@ -365,7 +395,7 @@ fastify.post("/api/asr", async (req, reply) => {
   req.log.info({ mime, filename, size: buf.length, ASR_URL, ASR_FIELD }, "ASR upload");
 
   const fd = new FormData();
-  fd.append(ASR_FIELD, new Blob([buf], { type: mime }), filename);
+  fd.append(ASR_FIELD, new Blob([buf as any], { type: mime }), filename);
 
   let res: Response;
   try {

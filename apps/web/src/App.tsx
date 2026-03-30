@@ -96,6 +96,9 @@ export default function App() {
     message: "",
     status: "idle",
   });
+  
+  const [canvasContent, setCanvasContent] = useState<string>("");
+  const [canvasTitle, setCanvasTitle] = useState<string>("Content");
 
   const isMailActive = emailDraft.status !== "idle";
 
@@ -590,6 +593,14 @@ export default function App() {
                 lastError: obj?.lastError ? String(obj.lastError) : undefined,
               }));
             } catch {}
+          } else if (event === "canvas") {
+            try {
+              const obj = JSON.parse(data);
+              if (obj?.html) {
+                setCanvasContent(obj.html);
+                if (obj.title) setCanvasTitle(obj.title);
+              }
+            } catch {}
           } else if (event === "final" || event === "done") {
             // IMPORTANT FIX: backend emits "final"
             if (ttsEnabled) {
@@ -974,14 +985,43 @@ export default function App() {
         <main className="contentPanel">
           {isMailActive ? (
             <EmailCanvas draft={emailDraft} />
+          ) : canvasContent ? (
+            <HtmlCanvas content={canvasContent} title={canvasTitle} />
           ) : (
             <div className="contentPlaceholder">
-              Content Panel (später: Bilder, PDFs, Editor, Dokumente, etc.)
+              Content Panel - Beschreibe im Chat, was du sehen möchtest.
             </div>
           )}
         </main>
       </div>
     </div>
+  );
+}
+
+/**
+ * Generic HTML Canvas for displaying any HTML content.
+ */
+function HtmlCanvas({ content, title }: { content: string; title: string }) {
+  const sanitizeHtml = (html: string): string => {
+    return html
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+      .replace(/on\w+="[^"]*"/gi, "")
+      .replace(/on\w+='[^']*'/gi, "");
+  };
+
+  return (
+    <>
+      <div className="contentHeader">
+        <div className="contentTitle">{title}</div>
+      </div>
+      <div className="contentBody">
+        <iframe
+          srcDoc={`<!DOCTYPE html><html><head><style>body{margin:0;padding:16px;font-family:-apple-system,sans-serif;color:#1f2937;}</style></head><body>${sanitizeHtml(content)}</body></html>`}
+          style={{ width: "100%", height: "100%", border: "none", background: "#fff" }}
+          title="Canvas"
+        />
+      </div>
+    </>
   );
 }
 
