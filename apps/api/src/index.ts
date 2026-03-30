@@ -61,12 +61,16 @@ const OLLAMA_URL = process.env.OLLAMA_URL ?? "http://127.0.0.1:11434";
 /** Default Modell für Chat */
 const DEFAULT_MODEL = process.env.OLLAMA_MODEL ?? "qwen3.5:9b";
 
-/** ASR Service (FastAPI Whisper) */
-const ASR_URL = process.env.ASR_URL ?? "http://127.0.0.1:9002/transcribe";
+/** ASR Service (FastAPI Whisper) - Default: Host System */
+const ASR_URL = process.env.ASR_URL ?? "http://192.168.100.64:9002/transcribe";
 const ASR_FIELD = process.env.ASR_FIELD ?? "file";
 
-/** TTS (Piper) */
-const PIPER_BIN = process.env.PIPER_BIN ?? "/usr/bin/piper-tts";
+/** TTS Service (Chatterbox) - Default: Host System */
+const TTS_URL = process.env.TTS_URL ?? "http://192.168.100.64:8004/tts";
+const TTS_VOICE = process.env.TTS_VOICE ?? "Emily.wav";
+
+/** Legacy Piper Config (optional fallback) */
+const PIPER_BIN = process.env.PIPER_BIN ?? "";
 const PIPER_MODEL = process.env.PIPER_MODEL ?? "";
 const PIPER_CONFIG = process.env.PIPER_CONFIG ?? "";
 
@@ -502,9 +506,19 @@ fastify.post("/zdt/api/chat", async (req, reply) => {
   // ========================================
   // NORMAL CHAT (OLLAMA STREAMING)
   // ========================================
+  
+  // User-Nachricht zur Historie hinzufügen
   st.history.push({ role: "user", content: userText, createdAt: Date.now() });
 
-  // System-Prompt für deutsche Antworten
+  /**
+   * System-Prompt für das lokale LLM.
+   * 
+   * Definiert Identität, Fähigkeiten und Verhalten:
+   * - Identität: JARVIS, persönlicher Assistent für Oliver
+   * - Features: Chat, Email-Entwürfe, Canvas (Bilder/Diagramme/Tabellen/Karten)
+   * - Sprache: Immer Deutsch, auch bei kurzen Eingaben
+   * - Verhalten: Prägnant, natürlich, proaktiv bei Canvas-Vorschlägen
+   */
   const systemPrompt: Msg = {
     role: "system",
     content: `Du bist JARVIS, ein hilfreicher KI-Assistent für Oliver.
@@ -525,12 +539,13 @@ VERHALTEN:
     createdAt: Date.now()
   };
 
-  // Füge System-Prompt am Anfang der Messages hinzu (falls noch nicht vorhanden)
+  // Messages mit System-Prompt am Anfang (für Kontext)
   const messagesWithSystem = [
     systemPrompt,
     ...st.history.map((m) => ({ role: m.role, content: m.content })),
   ];
 
+  // Ollama Streaming Request
   const payload = {
     model,
     stream: true,
@@ -661,26 +676,87 @@ fastify.post("/zdt/api/asr", async (req, reply) => {
 });
 
 // ============================================================================
-// TTS ENDPOINT (PIPER)
+// TTS ENDPOINT (CHATTERBOX)
 // ============================================================================
 
 /**
- * Text-to-Speech mit Piper.
+ * Text-to-Speech mit Chatterbox TTS Server.
  * 
- * Generiert WAV Audio aus Text.
+ * Leitet TTS-Requests an den Chatterbox-Server auf dem Host weiter.
+ * Fallback auf Piper falls PIPER_* konfiguriert.
  */
 fastify.post("/zdt/api/tts", async (req, reply) => {
   const Body = z.object({ text: z.string().min(1) });
   const { text } = Body.parse(req.body);
 
-  if (!PIPER_MODEL || !PIPER_CONFIG) {
-    reply.code(500).send({
-      error: "Piper TTS not configured",
-      hint: "Set PIPER_MODEL and PIPER_CONFIG in apps/api/.env",
-    });
-    return;
+  // ========================================
+  // Chatterbox TTS (bevorzugt)
+  // ========================================
+  if (TTS_URL) {
+    try {
+      const res = await fetch(TTS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text,
+          predefined_voice_id: TTS_VOICE,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.text().catch(() => "");
+        req.log.error({ status: res.status, err }, "Chatterbox TTS failed");
+        
+        // Fallback zu Piper falls konfiguriert
+        if (PIPER_MODEL && PIPER_CONFIG) {
+          return await piperTTS(req, reply, text);
+        }
+        
+        reply.code(500).send({
+          error: "TTS service failed",
+          status: res.status,
+          detail: err.slice(0, 500),
+        });
+        return;
+      }
+
+      const wav = await res.arrayBuffer();
+      reply.header("Content-Type", "audio/wav");
+      reply.send(Buffer.from(wav));
+      return;
+    } catch (e: any) {
+      req.log.error(e, "Chatterbox TTS error");
+      
+      // Fallback zu Piper
+      if (PIPER_MODEL && PIPER_CONFIG) {
+        return await piperTTS(req, reply, text);
+      }
+      
+      reply.code(502).send({
+        error: "TTS service unreachable",
+        detail: e?.message ?? String(e),
+      });
+      return;
+    }
   }
 
+  // ========================================
+  // Piper Fallback (falls konfiguriert)
+  // ========================================
+  if (PIPER_MODEL && PIPER_CONFIG) {
+    return await piperTTS(req, reply, text);
+  }
+
+  reply.code(500).send({
+    error: "No TTS service configured",
+    hint: "Set TTS_URL (Chatterbox) or PIPER_MODEL/PIPER_CONFIG (Piper)",
+  });
+});
+
+/**
+ * Piper TTS Fallback Implementation.
+ */
+async function piperTTS(req: any, reply: any, text: string): Promise<void> {
   // Prüfe ob Model/Config existieren
   const [modelOk, configOk] = await Promise.all([
     fs.access(PIPER_MODEL).then(() => true).catch(() => false),
@@ -701,7 +777,7 @@ fastify.post("/zdt/api/tts", async (req, reply) => {
   const outPath = path.join(tmpdir(), `tts_${id}.wav`);
   const args = ["-m", PIPER_MODEL, "-c", PIPER_CONFIG, "-f", outPath];
 
-  req.log.info({ PIPER_BIN, args }, "TTS piper-tts spawn");
+  req.log.info({ PIPER_BIN, args }, "TTS piper-tts spawn (fallback)");
 
   // Piper Process
   const p = spawn(PIPER_BIN, args, { stdio: ["pipe", "ignore", "pipe"] });
@@ -729,7 +805,7 @@ fastify.post("/zdt/api/tts", async (req, reply) => {
 
   reply.header("Content-Type", "audio/wav");
   reply.send(wav);
-});
+}
 
 // ============================================================================
 // SERVER START
