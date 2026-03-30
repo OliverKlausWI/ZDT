@@ -1,76 +1,100 @@
+<div align="center">
+
 # ZDT - AI Assistant Platform
 
-Eine multimodale AI-Assistenten-Plattform mit Chat, Email-Drafting, Content-Generierung und Sprachsteuerung.
+**Eine multimodale AI-Assistenten-Plattform mit Chat, Email-Drafting, Content-Generierung und Sprachsteuerung**
 
-## 🎯 Features
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React-18+-61DAFB?logo=react&logoColor=black)](https://reactjs.org/)
+[![Fastify](https://img.shields.io/badge/Fastify-5+-000000?logo=fastify&logoColor=white)](https://fastify.dev/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-- **Chat-Interface** - Streaming-Chat mit Ollama (Qwen3.5:9b)
-- **Email-Drafting** - Natürliche Sprache zu Email-Entwürfen
-- **Canvas Content** - HTML-Generierung via GLM-5 (Diagramme, Tabellen, Karten)
-- **Bildersuche** - Automatische Bildsuche via LoremFlickr
-- **Sprachsteuerung** - ASR (Spracheingabe) + TTS (Sprachausgabe)
-- **White Mode UI** - Optimiert für Beamer-Präsentationen
+</div>
+
+---
+
+## ✨ Features
+
+| Feature | Beschreibung |
+|---------|--------------|
+| 💬 **Chat-Interface** | Streaming-Chat mit Ollama (Qwen3.5:9b) |
+| 📧 **Email-Drafting** | Natürliche Sprache zu Email-Entwürfen |
+| 🎨 **Canvas Content** | HTML-Generierung via GLM-5 (Diagramme, Tabellen, Karten) |
+| 🖼️ **Bildersuche** | Automatische Bildsuche via LoremFlickr |
+| 🎤 **Sprachsteuerung** | ASR (Spracheingabe) + TTS (Sprachausgabe) |
+| 🖥️ **White Mode UI** | Optimiert für Beamer-Präsentationen |
+
+---
 
 ## 📁 Projektstruktur
 
 ```
 zdt/
 ├── apps/
-│   ├── api/          # Fastify Backend (Port 8080)
+│   ├── api/              # Fastify Backend (Port 8080)
 │   │   └── src/
 │   │       ├── index.ts       # Main API Server
 │   │       └── canvas-api.ts  # GLM-5 Canvas Generierung
 │   │
-│   └── web/          # React Frontend (Port 5173)
+│   └── web/              # React Frontend (Port 5173)
 │       └── src/
 │           ├── App.tsx        # Main App Component
 │           └── App.css        # White Mode Styling
 │
-├── data/             # Datenverzeichnis
-└── infra/            # Infrastructure Config
+└── infra/                # Infrastructure Config
+    ├── caddy/            # Caddy Reverse Proxy
+    └── docker-compose.yml
 ```
+
+---
 
 ## 🚀 Quick Start
 
 ### Voraussetzungen
 
-- Node.js 18+
-- pnpm (`npm install -g pnpm`)
-- Ollama mit Qwen3.5:9b (`ollama pull qwen3.5:9b`)
+| Requirement | Version | Installation |
+|-------------|---------|--------------|
+| Node.js | 18+ | [nodejs.org](https://nodejs.org/) |
+| pnpm | latest | `npm install -g pnpm` |
+| Ollama | latest | [ollama.ai](https://ollama.ai/) |
 
-### Externe Services (Host System)
-
-Die folgenden Services laufen separat auf dem Host-System:
-
-| Service | Port | Beschreibung |
-|---------|------|--------------|
-| ASR (Whisper) | 9002 | Spracheingabe |
-| TTS (Chatterbox) | 8004 | Sprachausgabe |
-
-### Installation
+### 1. Ollama Modell laden
 
 ```bash
-# Dependencies installieren
-pnpm install
+ollama pull qwen3.5:9b
+```
 
-# API starten
+### 2. Dependencies installieren
+
+```bash
+pnpm install
+```
+
+### 3. Services starten
+
+```bash
+# Terminal 1 - API
 cd apps/api && pnpm dev
 
-# Web starten (neues Terminal)
+# Terminal 2 - Web
 cd apps/web && pnpm dev
 ```
 
-### Zugriff
+### 4. Öffnen
 
-- **Web:** http://localhost:5173/
-- **API Health:** http://localhost:8080/api/health
+- **Web:** http://localhost:5173/zdt/
+- **API Health:** http://localhost:8080/zdt/api/health
+
+---
 
 ## ⚙️ Konfiguration
 
-### API (apps/api/.env)
+### Environment Variables
+
+Erstelle `apps/api/.env`:
 
 ```env
-# Ollama
+# Ollama LLM
 OLLAMA_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=qwen3.5:9b
 
@@ -81,24 +105,26 @@ GLM5_API_KEY=your-api-key
 N8N_EMAIL_WEBHOOK_URL=https://your-n8n.com/webhook
 N8N_EMAIL_KEY=your-secret-key
 
-# TTS (Chatterbox - externer Service)
+# TTS (Chatterbox)
 TTS_URL=http://192.168.100.64:8004/tts
 TTS_VOICE=Emily.wav
 
-# ASR (Whisper - externer Service)
+# ASR (Whisper)
 ASR_URL=http://192.168.100.64:9002/transcribe
 ```
 
-### Web (apps/web/vite.config.ts)
+### Externe Services
 
-- Proxy zu API konfiguriert unter `/zdt/api`
-- Base Path: `/zdt/` für Subpath-Deployment
+| Service | Port | Beschreibung |
+|---------|------|--------------|
+| ASR (Whisper) | 9002 | Spracheingabe via faster-whisper |
+| TTS (Chatterbox) | 8004 | Sprachausgabe via Chatterbox TTS |
+
+---
 
 ## 🎨 Verwendung
 
 ### Chat
-
-Normale Konversation mit dem AI-Assistenten:
 
 ```
 User: "Wie spät ist es?"
@@ -115,7 +141,7 @@ AI: "Soll ich die Email senden?"
 User: "Ja"
 ```
 
-### Canvas Content (Bilder, Diagramme, etc.)
+### Canvas Content
 
 ```
 User: "Zeige mir eine Katze"
@@ -125,31 +151,30 @@ User: "Erstelle ein Balkendiagramm mit A=10, B=20, C=30"
 AI: [Zeigt Diagramm]
 
 User: "Füge D=7 hinzu"
-AI: [Aktualisiert Diagramm mit neuem Balken]
+AI: [Aktualisiert Diagramm]
 ```
+
+---
 
 ## 🏗️ Architektur
 
-### Backend (apps/api)
+### Backend
 
 ```
 ┌─────────────────────────────────────────────────┐
 │                   Fastify Server                 │
+│                    Port 8080                     │
 ├─────────────────────────────────────────────────┤
-│  /api/chat    │ Chat + Email + Canvas (SSE)     │
-│  /api/asr     │ Speech-to-Text Proxy            │
-│  /api/tts     │ Text-to-Speech (Piper)          │
-│  /api/health  │ Health Check                    │
+│  /zdt/api/chat    │ Chat + Email + Canvas (SSE) │
+│  /zdt/api/asr     │ Speech-to-Text Proxy        │
+│  /zdt/api/tts     │ Text-to-Speech              │
+│  /zdt/api/health  │ Health Check                │
 ├─────────────────────────────────────────────────┤
-│              In-Memory Conversation State        │
-│  - history: Message[]                           │
-│  - mail: EmailDraft                             │
-│  - lastCanvasQuery: string                      │
-│  - lastCanvasHtml: string                       │
+│            In-Memory Conversation State          │
 └─────────────────────────────────────────────────┘
 ```
 
-### Frontend (apps/web)
+### Frontend
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -157,10 +182,10 @@ AI: [Aktualisiert Diagramm mit neuem Balken]
 ├──────────────────────┬──────────────────────────┤
 │   Sidebar (420px)    │   Content Panel (flex)   │
 │  ┌────────────────┐  │  ┌────────────────────┐  │
-│  │   Controls     │  │  │                    │  │
-│  ├────────────────┤  │  │   EmailCanvas      │  │
-│  │   Chat List    │  │  │   or HtmlCanvas    │  │
-│  ├────────────────┤  │  │   or Placeholder   │  │
+│  │   Controls     │  │  │   EmailCanvas      │  │
+│  ├────────────────┤  │  │   or HtmlCanvas    │  │
+│  │   Chat List    │  │  │   or Placeholder   │  │
+│  ├────────────────┤  │  │                    │  │
 │  │   Composer     │  │  │                    │  │
 │  └────────────────┘  │  └────────────────────┘  │
 └──────────────────────┴──────────────────────────┘
@@ -183,34 +208,13 @@ User Input → Intent Detection → Handler
                                   ▼
                            SSE Events
                         (token/mail/canvas)
-                                  │
-                                  ▼
-                            Frontend UI
 ```
 
-## 🔧 Entwicklung
-
-### Commands
-
-```bash
-# TypeScript prüfen
-cd apps/api && npx tsc --noEmit
-cd apps/web && npx tsc --noEmit
-
-# Build (Production)
-cd apps/web && npx vite build
-```
-
-### Code Style
-
-- TypeScript mit strikten Typen
-- Inline-Kommentare für komplexe Logik
-- SSE für Streaming-Responses
-- CSS in separaten Dateien (kein Tailwind)
+---
 
 ## 📝 API Reference
 
-### POST /api/chat
+### POST /zdt/api/chat
 
 Streaming Chat Endpoint (Server-Sent Events).
 
@@ -224,22 +228,17 @@ Streaming Chat Endpoint (Server-Sent Events).
 }
 ```
 
-**Response (SSE Events):**
-```
-event: token
-data: {"token": "Ich"}
+**SSE Events:**
 
-event: mail
-data: {"to": "...", "subject": "...", "message": "...", "status": "editing"}
+| Event | Data | Description |
+|-------|------|-------------|
+| `token` | `{ token: "word" }` | Streaming token |
+| `mail` | `{ to, subject, message, status }` | Email draft update |
+| `canvas` | `{ title, html }` | Canvas content |
+| `final` | `{ conversationId, text }` | End of response |
+| `error` | `{ message, status }` | Error occurred |
 
-event: canvas
-data: {"title": "Diagramm", "html": "<div>...</div>"}
-
-event: final
-data: {"conversationId": "...", "text": "Full response"}
-```
-
-### POST /api/asr
+### POST /zdt/api/asr
 
 Speech-to-Text Proxy.
 
@@ -247,19 +246,41 @@ Speech-to-Text Proxy.
 
 **Response:**
 ```json
-{"text": "Transkribierter Text"}
+{ "text": "Transkribierter Text" }
 ```
 
-### POST /api/tts
+### POST /zdt/api/tts
 
-Text-to-Speech mit Piper.
+Text-to-Speech.
 
 **Request:**
 ```json
-{"text": "Zu sprechender Text"}
+{ "text": "Zu sprechender Text" }
 ```
 
 **Response:** `audio/wav`
+
+---
+
+## 🔧 Entwicklung
+
+```bash
+# TypeScript prüfen
+cd apps/api && npx tsc --noEmit
+cd apps/web && npx tsc --noEmit
+
+# Build (Production)
+cd apps/web && npx vite build
+```
+
+### Code Style
+
+- TypeScript mit strikten Typen
+- JSDoc-Kommentare für alle Funktionen
+- SSE für Streaming-Responses
+- CSS in separaten Dateien
+
+---
 
 ## 🤝 Beitragen
 
@@ -269,10 +290,16 @@ Text-to-Speech mit Piper.
 4. Push (`git push origin feature/amazing`)
 5. Pull Request öffnen
 
+---
+
 ## 📄 Lizenz
 
-MIT
+[MIT](LICENSE)
 
 ---
 
+<div align="center">
+
 *Erstellt für wissenschaftliche Präsentationen mit Beamer-optimierter UI.*
+
+</div>

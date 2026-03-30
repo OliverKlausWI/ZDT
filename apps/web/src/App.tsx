@@ -1,24 +1,98 @@
-// App.tsx
+/**
+ * ZDT Web - Main Application Component
+ * 
+ * React-basiertes Frontend für die ZDT AI-Assistenten-Plattform.
+ * 
+ * Features:
+ * - Streaming Chat mit SSE (Server-Sent Events)
+ * - Text-to-Speech mit Queue-System (WebAudio/HTMLAudio)
+ * - Speech Recognition mit Voice Activity Detection (VAD)
+ * - Email Draft UI mit Status-Anzeige
+ * - Canvas Panel für HTML-Content (Bilder, Diagramme, Tabellen)
+ * 
+ * Architecture:
+ * - Sidebar: Controls, Chat List, Composer
+ * - Content Panel: EmailCanvas | HtmlCanvas | Placeholder
+ * 
+ * @module App
+ */
+
+// ============================================================================
+// IMPORTS
+// ============================================================================
+
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 
+// ============================================================================
+// TYPES
+// ============================================================================
+
+/** Chat Message Role */
 type Role = "user" | "assistant" | "system";
+
+/** Chat Message Structure */
 type ChatMessage = {
   id: string;
   role: Role;
   content: string;
 };
 
-function uuid() {
+/** TTS Queue Item */
+type TTSItem = {
+  id: string;
+  text: string;
+  buffer?: AudioBuffer;
+  blobUrl?: string;
+  byteLen?: number;
+};
+
+/** Audio Playback Mode */
+type AudioMode = "webaudio" | "htmlaudio";
+
+/** Email Draft Status */
+type MailStatus = "idle" | "editing" | "confirm_send" | "sent" | "error";
+
+/** Email Draft State */
+type EmailDraft = {
+  to: string;
+  subject: string;
+  message: string;
+  status: MailStatus;
+};
+
+// ============================================================================
+// UTILITIES
+// ============================================================================
+
+/**
+ * Generiert eine UUID für Messages und Conversations.
+ * Fallback für Browser ohne crypto.randomUUID Support.
+ */
+function uuid(): string {
   // @ts-ignore
   return (crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`).toString();
 }
 
+/**
+ * Parst Server-Sent Events aus dem Response Stream.
+ * 
+ * SSE Format:
+ * ```
+ * event: token
+ * data: {"token":"Hello"}
+ * 
+ * ```
+ * 
+ * @param chunk - Raw chunk from stream
+ * @param state - Buffer state object
+ * @param onEvent - Callback for parsed events
+ */
 function parseSSEChunk(
   chunk: string,
   state: { buffer: string },
   onEvent: (evt: { event: string; data: string }) => void
-) {
+): void {
   state.buffer += chunk;
 
   let idx: number;
