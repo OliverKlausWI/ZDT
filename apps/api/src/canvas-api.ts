@@ -21,8 +21,8 @@
 /** GLM-5 API Endpoint (Zhipu AI) */
 const GLM5_API_URL = "https://api.z.ai/api/paas/v4/chat/completions";
 
-/** GLM-5 API Key - Sollte eigentlich über Environment Variable konfiguriert werden */
-const GLM5_API_KEY = process.env.GLM5_API_KEY || "55a2592beb09418fa24308b917959898.LdOSXEnztL6lLyNm";
+/** GLM-5 API Key - Muss über GLM5_API_KEY Environment Variable konfiguriert werden */
+const GLM5_API_KEY = process.env.GLM5_API_KEY || "";
 
 /** LoremFlickr URL Template für Bildersuche */
 const LOREMFLICKR_URL = "https://loremflickr.com/800/600";

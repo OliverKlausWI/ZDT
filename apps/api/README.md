@@ -1,266 +1,140 @@
-# ZDT API
+# ZDT API Backend
 
-Fastify-basiertes Backend für die ZDT AI-Assistenten-Plattform.
+Fastify-basierter Backend Server für die ZDT AI-Assistenten-Plattform.
 
-## 📁 Struktur
+## Architecture
 
 ```
-apps/api/src/
-├── index.ts          # Main Entry Point & API Routes
-├── canvas-api.ts     # GLM-5 Canvas Content Generierung
-│
-├── core/             # Core Module (geplant für Refactoring)
-│   ├── config.ts
-│   ├── http.ts
-│   └── validation.ts
-│
-└── modules/          # Feature Module (geplant für Refactoring)
-    ├── auth/
-    ├── chat/
-    ├── conversations/
-    ├── rag/
-    └── tools/
+┌─────────────────────────────────────────────────────┐
+│                  Fastify Server                      │
+│                    Port 8080                         │
+├─────────────────────────────────────────────────────┤
+│  /api/chat    │ Chat + Email + Canvas (SSE Stream)  │
+│  /api/asr     │ Speech-to-Text Proxy (Whisper)      │
+│  /api/tts     │ Text-to-Speech (Piper)              │
+│  /api/health  │ Health Check                        │
+├─────────────────────────────────────────────────────┤
+│            In-Memory Conversation State              │
+│  - history: Message[]                               │
+│  - mail: EmailDraft                                 │
+│  - lastCanvasQuery/Html: Canvas State               │
+└─────────────────────────────────────────────────────┘
 ```
 
-## 🔌 Endpoints
+## Endpoints
 
-### `GET /api/health`
+### POST /api/chat
 
-Health Check.
+Main chat endpoint using Server-Sent Events (SSE).
 
-**Response:**
+**Request:**
 ```json
-{"ok": true}
-```
-
----
-
-### `POST /api/chat`
-
-Hauptendpoint für Chat, Email-Drafting und Canvas Content.
-Verwendet Server-Sent Events (SSE) für Streaming.
-
-**Request Body:**
-```typescript
 {
-  conversationId?: string;  // UUID, wird auto-generiert falls fehlend
-  message: string;          // User-Nachricht
-  inputMode?: "voice" | "text";  // Default: "text"
-  model?: string;           // Default: "qwen3.5:9b"
+  "conversationId": "uuid-optional",
+  "message": "User message",
+  "inputMode": "text|voice",
+  "model": "qwen3.5:9b"
 }
 ```
 
 **SSE Events:**
+- `token` - Streaming tokens `{ token: "word" }`
+- `mail` - Email draft update `{ to, subject, message, status }`
+- `canvas` - Canvas content `{ title, html }`
+- `final` - End of response `{ conversationId, text }`
+- `error` - Error `{ message, status }`
 
-| Event | Data | Beschreibung |
-|-------|------|--------------|
-| `token` | `{token: string}` | Einzelne Chat-Tokens |
-| `mail` | `EmailDraft` | Email-Entwurf Update |
-| `canvas` | `{title, html}` | Canvas HTML Content |
-| `final` | `{conversationId, text}` | Abschluss der Antwort |
-| `error` | `{message, status}` | Fehlermeldung |
+### POST /api/asr
 
----
+Speech-to-text proxy for Whisper ASR service.
 
-### `POST /api/asr`
+**Request:** `multipart/form-data` with audio file
 
-Speech-to-Text Proxy zu externem ASR-Service.
+**Response:** `{ text: "transcribed text" }`
 
-**Request:** `multipart/form-data`
-- Field: `file` (Audio-Datei)
+### POST /api/tts
 
-**Response:**
-```json
-{"text": "Erkannter Text"}
-```
+Text-to-speech using Piper.
 
-**Konfiguration:**
-```env
-ASR_URL=http://127.0.0.1:9002/transcribe
-ASR_FIELD=file
-```
+**Request:** `{ text: "text to speak" }`
 
----
+**Response:** `audio/wav` binary
 
-### `POST /api/tts`
+### GET /api/health
 
-Text-to-Speech mit Piper.
+Health check endpoint.
 
-**Request:**
-```json
-{"text": "Zu sprechender Text"}
-```
+**Response:** `{ ok: true }`
 
-**Response:** `audio/wav` Binary
+## Configuration
 
-**Konfiguration:**
-```env
-PIPER_BIN=/usr/bin/piper-tts
-PIPER_MODEL=/path/to/model.onnx
-PIPER_CONFIG=/path/to/model.onnx.json
-```
-
-## 🧠 Intent Detection
-
-Der Chat-Endpoint erkennt automatisch drei Modi:
-
-### 1. Email Mode
-
-Trigger:
-- "Lass uns eine Email schreiben"
-- "Email entwerfen"
-- Wenn `mail.status !== "idle"`
-
-Flow:
-```
-idle → editing → confirm_send → idle (nach Send)
-```
-
-### 2. Canvas Mode
-
-Trigger:
-- "Zeige mir [Bild-Kategorie]"
-- "Erstelle ein Diagramm"
-- "Füge X hinzu" (Bearbeitung)
-
-Handler: `canvas-api.ts`
-
-### 3. Normal Chat
-
-Default - Streaming über Ollama.
-
-## 📊 Conversation State
-
-In-Memory Storage pro Session:
-
-```typescript
-type ConvState = {
-  history: Msg[];              // Chat-Historie
-  mail: MailDraft;             // Email-Entwurf
-  lastCanvasQuery?: string;    // Letzter Canvas-Titel
-  lastCanvasHtml?: string;     // Letztes Canvas-HTML
-};
-
-type Msg = {
-  role: "user" | "assistant" | "system";
-  content: string;
-  createdAt: number;
-};
-
-type MailDraft = {
-  to: string;
-  subject: string;
-  message: string;
-  status: "idle" | "editing" | "confirm_send" | "sent" | "error";
-  lastError?: string;
-};
-```
-
-## 🔧 Konfiguration
-
-### Erforderlich
+Create `.env` file in `apps/api/`:
 
 ```env
-# Ollama (Pflicht)
+# Server
+PORT=8080
+
+# Ollama LLM
 OLLAMA_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=qwen3.5:9b
 
-# GLM-5 Canvas API (Pflicht für Canvas)
+# GLM-5 Canvas API
 GLM5_API_KEY=your-api-key
-```
 
-### Optional
-
-```env
-# Email-Versand (n8n Webhook)
-N8N_EMAIL_WEBHOOK_URL=https://webhook-url
-N8N_EMAIL_KEY=secret-key
+# Email (n8n Webhook)
+N8N_EMAIL_WEBHOOK_URL=https://your-n8n.com/webhook
+N8N_EMAIL_KEY=your-secret-key
 
 # TTS (Piper)
 PIPER_BIN=/usr/bin/piper-tts
 PIPER_MODEL=/path/to/model.onnx
 PIPER_CONFIG=/path/to/model.onnx.json
 
-# ASR
+# ASR (Whisper)
 ASR_URL=http://127.0.0.1:9002/transcribe
 ASR_FIELD=file
 ```
 
-## 🚀 Entwicklung
+## Development
 
 ```bash
-# Dev Server starten
+# Install dependencies
+pnpm install
+
+# Start dev server
 pnpm dev
 
-# TypeScript prüfen
+# Type check
 npx tsc --noEmit
-
-# Mit anderer Ollama-URL
-OLLAMA_URL=http://192.168.1.100:11434 pnpm dev
 ```
 
-## 📝 Code-Übersicht
+## Intent Routing
 
-### index.ts
+The `/api/chat` endpoint routes requests based on intent detection:
 
-Main Entry Point mit:
-- Fastify Server Setup
-- CORS & Multipart Config
-- Conversation State Management
-- Chat/ASR/TTS Routes
-- Intent Detection & Routing
+1. **Email Mode** - Triggered by "lass uns eine email schreiben"
+2. **Canvas Mode** - Detected by `isCanvasIntent()` for images/diagrams
+3. **Normal Chat** - Streaming response via Ollama
 
-### canvas-api.ts
+## State Management
 
-Canvas Content Generierung:
-- **Bildersuche** via LoremFlickr
-- **HTML-Generierung** via GLM-5
-- **Bearbeitungs-Modus** für Follow-ups
-- **Intent Detection** für Canvas-Requests
+Conversation state is stored in-memory using a Map:
 
-Key Functions:
 ```typescript
-// Prüft ob Request für Canvas gedacht ist
-export function isCanvasIntent(text: string): boolean
-
-// Generiert Canvas Content
-export async function generateCanvasContent(
-  userRequest: string,
-  lastCanvasQuery?: string,
-  lastCanvasHtml?: string
-): Promise<CanvasResult | null>
+type ConvState = {
+  history: Msg[];           // Chat history
+  mail: MailDraft;          // Email draft state
+  lastCanvasQuery?: string; // For canvas follow-ups
+  lastCanvasHtml?: string;  // For canvas edits
+};
 ```
 
-### core/ & modules/ (Geplant)
+For production, consider using Redis for persistence.
 
-Strukturierte Architektur für zukünftiges Refactoring:
+## Dependencies
 
-```
-core/
-  config.ts       - Zentrale Konfiguration
-  http.ts         - HTTP Utilities
-  validation.ts   - Zod Schemas
-
-modules/
-  auth/           - Auth Middleware
-  chat/           - Chat Controller & Ollama Client
-  conversations/  - Conversation Storage
-  rag/            - RAG Service (Retrieval Augmented Generation)
-  tools/          - Tool Executor Registry
-```
-
-## ⚠️ Bekannte Limitierungen
-
-- **In-Memory Storage** - Sessions gehen bei Restart verloren
-- **Keine Auth** - Jeder kann jeden Endpoint nutzen
-- **Keine Rate Limits** - Offen für Abuse
-
-## 🔒 Security
-
-- API Key für GLM-5 im Code (sollte in .env)
-- N8N Email Key via Environment Variable
-- Keine Input-Sanitization außer bei Canvas HTML
-
----
-
-*Für Gesamtübersicht siehe: `../../README.md`*
+- `fastify` - Web framework
+- `@fastify/cors` - CORS support
+- `@fastify/multipart` - File upload handling
+- `zod` - Request validation
+- `dotenv` - Environment variables
