@@ -24,7 +24,7 @@ const PORT = Number(process.env.PORT ?? 8080);
 
 // Ollama
 const OLLAMA_URL = process.env.OLLAMA_URL ?? "http://127.0.0.1:11434";
-const DEFAULT_MODEL = process.env.OLLAMA_MODEL ?? "llama3.1:8b";
+const DEFAULT_MODEL = process.env.OLLAMA_MODEL ?? "qwen3.5:9b";
 
 // ASR (FastAPI)
 const ASR_URL = process.env.ASR_URL ?? "http://127.0.0.1:9002/transcribe";
