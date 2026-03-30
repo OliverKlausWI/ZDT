@@ -19,19 +19,14 @@ zdt/
 │   ├── api/          # Fastify Backend (Port 8080)
 │   │   └── src/
 │   │       ├── index.ts       # Main API Server
-│   │       ├── canvas-api.ts  # GLM-5 Canvas Generierung
-│   │       ├── core/          # Core Module (geplant)
-│   │       └── modules/       # Feature Module (geplant)
+│   │       └── canvas-api.ts  # GLM-5 Canvas Generierung
 │   │
-│   ├── web/          # React Frontend (Port 5173)
-│   │   └── src/
-│   │       ├── App.tsx        # Main App Component
-│   │       └── App.css        # White Mode Styling
-│   │
-│   └── asr/          # ASR Service (Python, optional)
+│   └── web/          # React Frontend (Port 5173)
+│       └── src/
+│           ├── App.tsx        # Main App Component
+│           └── App.css        # White Mode Styling
 │
 ├── data/             # Datenverzeichnis
-├── packages/         # Shared Packages (geplant)
 └── infra/            # Infrastructure Config
 ```
 
@@ -42,6 +37,15 @@ zdt/
 - Node.js 18+
 - pnpm (`npm install -g pnpm`)
 - Ollama mit Qwen3.5:9b (`ollama pull qwen3.5:9b`)
+
+### Externe Services (Host System)
+
+Die folgenden Services laufen separat auf dem Host-System:
+
+| Service | Port | Beschreibung |
+|---------|------|--------------|
+| ASR (Whisper) | 9002 | Spracheingabe |
+| TTS (Chatterbox) | 8004 | Sprachausgabe |
 
 ### Installation
 
@@ -77,19 +81,18 @@ GLM5_API_KEY=your-api-key
 N8N_EMAIL_WEBHOOK_URL=https://your-n8n.com/webhook
 N8N_EMAIL_KEY=your-secret-key
 
-# TTS (Piper)
-PIPER_BIN=/usr/bin/piper-tts
-PIPER_MODEL=/path/to/model.onnx
-PIPER_CONFIG=/path/to/model.onnx.json
+# TTS (Chatterbox - externer Service)
+TTS_URL=http://192.168.100.64:8004/tts
+TTS_VOICE=Emily.wav
 
-# ASR
-ASR_URL=http://127.0.0.1:9002/transcribe
+# ASR (Whisper - externer Service)
+ASR_URL=http://192.168.100.64:9002/transcribe
 ```
 
 ### Web (apps/web/vite.config.ts)
 
-- Proxy zu API konfiguriert unter `/api`
-- Base Path: `/zdt/` (optional für Subpath-Deployment)
+- Proxy zu API konfiguriert unter `/zdt/api`
+- Base Path: `/zdt/` für Subpath-Deployment
 
 ## 🎨 Verwendung
 
