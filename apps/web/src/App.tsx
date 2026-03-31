@@ -59,6 +59,7 @@ type EmailDraft = {
   subject: string;
   message: string;
   status: MailStatus;
+  lastError?: string;
 };
 
 // ============================================================================
@@ -128,16 +129,6 @@ function pickSupportedMimeType(): string {
   return "";
 }
 
-type TTSItem = {
-  id: string;
-  text: string;
-  buffer?: AudioBuffer;
-  blobUrl?: string;
-  byteLen?: number;
-};
-
-type AudioMode = "webaudio" | "htmlaudio";
-
 function isProbablyIOS(): boolean {
   const ua = navigator.userAgent || "";
   const isIOS =
@@ -145,15 +136,6 @@ function isProbablyIOS(): boolean {
     ((/Macintosh/.test(ua) || /Mac OS/.test(ua)) && "ontouchend" in document);
   return !!isIOS;
 }
-
-type MailStatus = "idle" | "editing" | "confirm_send" | "sent" | "error";
-type EmailDraft = {
-  to: string;
-  subject: string;
-  message: string;
-  status: MailStatus;
-  lastError?: string;
-};
 
 export default function App() {
   const [conversationId, setConversationId] = useState<string>(() => uuid());
